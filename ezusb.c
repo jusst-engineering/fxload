@@ -174,6 +174,7 @@ static inline int ctrl_msg (
  */
 #define RW_INTERNAL	0xA0		/* hardware implements this one */
 #define RW_EEPROM	0xA2
+#define RW_EEPROM_LARGE	0xA9
 #define RW_MEMORY	0xA3
 #define GET_EEPROM_SIZE	0xA5
 
@@ -618,6 +619,7 @@ struct eeprom_poke_context {
     int			device;
     unsigned short	ee_addr;	/* next free address */
     int			last;
+    unsigned char eeprom_request; /* Request to USE to access the EEPROM */
 };
 
 static int eeprom_poke (
@@ -655,13 +657,13 @@ static int eeprom_poke (
     if (ctx->last)
 	header [0] |= 0x80;
     if ((rc = ezusb_write (ctx->device, "write EEPROM segment header",
-		    RW_EEPROM,
+		    ctx->eeprom_request,
 		    ctx->ee_addr, header, 4)) < 0)
 	return rc;
 
     /* write code/data */
     if ((rc = ezusb_write (ctx->device, "write EEPROM segment",
-		    RW_EEPROM,
+		    ctx->eeprom_request,
 		    ctx->ee_addr + 4, data, len)) < 0)
 	return rc;
 
@@ -679,7 +681,7 @@ static int eeprom_poke (
  * Caller must have pre-loaded a second stage loader that knows how
  * to handle the EEPROM write requests.
  */
-int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
+int ezusb_load_eeprom (int dev, const char *path, const char *type, int config, int large_eeprom,
 	int ww_config_vid,int ww_config_pid)
 {
     FILE			*image;
@@ -716,6 +718,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
 	cpucs_addr = 0xe600;
 	is_external = fx2_is_external;
 	ctx.ee_addr = 8;
+	ctx.eeprom_request = large_eeprom ? RW_EEPROM_LARGE : RW_EEPROM;
 	config &= 0x4f;
 	ww_vid=0x04B4;
 	ww_pid=0x6473;
@@ -734,6 +737,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
 	cpucs_addr = 0xe600;
 	is_external = fx2lp_is_external;
 	ctx.ee_addr = 8;
+	ctx.eeprom_request = large_eeprom ? RW_EEPROM_LARGE : RW_EEPROM;
 	config &= 0x4f;
 	ww_vid=0x04B4;
 	ww_pid=0x8613;
@@ -753,6 +757,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
 	cpucs_addr = 0x7f92;
 	is_external = fx_is_external;
 	ctx.ee_addr = 9;
+	ctx.eeprom_request = large_eeprom ? RW_EEPROM_LARGE : RW_EEPROM;
 	config &= 0x07;
 	logerror(
 	    "FX:  type = 0x%20x, config = 0x%02x, %d MHz%s, I2C = %d KHz\n",
@@ -772,6 +777,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
 	cpucs_addr = 0x7f92;
 	is_external = fx_is_external;
 	ctx.ee_addr = 7;
+	ctx.eeprom_request = large_eeprom ? RW_EEPROM_LARGE : RW_EEPROM;
 	config = 0;
 	logerror("AN21xx:  no EEPROM config byte\n");
 
@@ -785,7 +791,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
      */
     value = 0x00;
     status = ezusb_write (dev, "mark EEPROM as unbootable",
-	    RW_EEPROM, 0, &value, sizeof value);
+	    ctx.eeprom_request, 0, &value, sizeof value);
     if (status < 0)
 	return status;
 
@@ -803,7 +809,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
 	buf[4] = 0x05;  // 0xAnnn nnn = chip revision, where first silicon = 001)
 	buf[5] = 0xa0;
 	fprintf (stderr, "Writing vid=0x%04x, pid=0x%04x\n",ww_vid,ww_pid);
-	status = ezusb_write (dev, "load VID, PID", RW_EEPROM, 1, buf, 6);
+	status = ezusb_write (dev, "load VID, PID", ctx.eeprom_request, 1, buf, 6);
 	if (status < 0)
 	    return status;
     }
@@ -832,7 +838,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
     if (strcmp ("an21", type) != 0) {
 	value = config;
 	status = ezusb_write (dev, "write config byte",
-		RW_EEPROM, 7, &value, sizeof value);
+		ctx.eeprom_request, 7, &value, sizeof value);
 	if (status < 0)
 	    return status;
     }
@@ -841,14 +847,14 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
     if (strcmp ("fx", type) == 0) {
 	value = 0;
 	status = ezusb_write (dev, "write reserved byte",
-		RW_EEPROM, 8, &value, sizeof value);
+		ctx.eeprom_request, 8, &value, sizeof value);
 	if (status < 0)
 	    return status;
     }
 
     /* make the EEPROM say to boot from this EEPROM */
     status = ezusb_write (dev, "write EEPROM type byte",
-	    RW_EEPROM, 0, &first_byte, sizeof first_byte);
+	    ctx.eeprom_request, 0, &first_byte, sizeof first_byte);
     if (status < 0)
 	return status;
 
@@ -860,7 +866,7 @@ int ezusb_load_eeprom (int dev, const char *path, const char *type, int config,
 }
 
 
-int ezusb_erase_eeprom (int dev)
+int ezusb_erase_eeprom (int dev, int large_eeprom)
 {
     int	status;
     int adr;
@@ -872,7 +878,7 @@ int ezusb_erase_eeprom (int dev)
     for(adr=0; adr<8192; adr+=32)
     {
 	status = ezusb_write (dev, "overwrite EEPROM with 0xff",
-	    RW_EEPROM, adr, buf, 32);
+	    large_eeprom ? RW_EEPROM_LARGE : RW_EEPROM, adr, buf, 32);
 	if (status < 0)
 	    return status;
     }

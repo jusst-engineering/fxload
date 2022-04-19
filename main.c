@@ -97,9 +97,10 @@ int main(int argc, char*argv[])
       int		opt;
       int		config = -1;
       int		do_erase = 0;
+      int large_eeprom = 0;
       int		ww_config_vid=-1,ww_config_pid=-1;
 
-      while ((opt = getopt (argc, argv, "2vVE?D:I:L:c:lm:s:t:d:")) != EOF)
+      while ((opt = getopt (argc, argv, "2vVEe?D:I:L:c:lm:s:t:d:")) != EOF)
       switch (opt) {
 
 	  case '2':		// original version of "-t fx2"
@@ -128,6 +129,10 @@ int main(int argc, char*argv[])
 		logerror("illegal config byte: %s\n", optarg);
 		goto usage;
 	    }
+	    break;
+
+	  case 'e':
+	    large_eeprom = 1;
 	    break;
 
 	  case 'l':
@@ -201,7 +206,7 @@ int main(int argc, char*argv[])
 usage:
 	    fputs ("usage: ", stderr);
 	    fputs (argv [0], stderr);
-	    fputs (" [-vVE] [-l] [-t type] [-D devpath]\n", stderr);
+	    fputs (" [-vVEe] [-l] [-t type] [-D devpath]\n", stderr);
 	    fputs ("\t\t[-I firmware_hexfile] ", stderr);
 	    fputs ("[-s loader] [-c config_byte] [-d VID:PID]\n", stderr);
 	    fputs ("\t\t[-L link] [-m mode]\n", stderr);
@@ -243,9 +248,9 @@ usage:
 
 		/* second stage ... write either EEPROM, or RAM.  */
 		if(do_erase)
-		    status = ezusb_erase_eeprom(fd);
+		    status = ezusb_erase_eeprom(fd, large_eeprom);
 		else if (config >= 0)
-		    status = ezusb_load_eeprom (fd, ihex_path, type, config,
+		    status = ezusb_load_eeprom (fd, ihex_path, type, config,large_eeprom,
 			ww_config_vid,ww_config_pid);
 		else
 		    status = ezusb_load_ram (fd, ihex_path, fx2, 1);

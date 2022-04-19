@@ -48,6 +48,7 @@ extern int ezusb_load_eeprom (
 	const char *path,	/* path to hexfile */
 	const char *type,	/* fx, fx2, an21 */
 	int config,		/* config byte for fx/fx2; else zero */
+	int large_eeprom,
 	int ww_config_vid,int ww_config_pid  /* VID:PID to write into EEPROM or -1*/
 	);
 
@@ -55,6 +56,6 @@ extern int ezusb_load_eeprom (
 /* boolean flag, says whether to write extra messages to stderr */
 extern int verbose;
 
-extern int ezusb_erase_eeprom (int dev);
+extern int ezusb_erase_eeprom (int dev, int large_eeprom);
 
 #endif
